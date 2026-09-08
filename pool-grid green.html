@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Weekly Pool</title>
+<style>
+  :root {
+    --turf: #046A38;
+    --chalk: #F2F5F3;
+    --paper: #FFFFFF;
+    --ink: #14231A;
+    --ink-soft: #5B6461;
+    --gold: #046A38;
+    --gold-soft: #046A38;
+    --line: #CFD5D3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--chalk);
+    color: var(--ink);
+    padding: 20px;
+  }
+  h1 {
+    font-size: 1.4rem;
+    margin: 0 0 4px;
+  }
+  p.sub {
+    margin: 0 0 18px;
+    color: var(--ink-soft);
+    font-size: 0.88rem;
+  }
+  #setup-notice {
+    max-width: 640px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px 22px;
+    line-height: 1.5;
+  }
+  #setup-notice h2 { margin-top: 0; font-size: 1.1rem; }
+  #setup-notice code {
+    background: var(--chalk);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+  #table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--paper);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th, td {
+    border-bottom: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    padding: 0;
+  }
+  th:last-child, td:last-child { border-right: none; }
+  thead th {
+    background: var(--gold-soft);
+    color: #FFFFFF;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  th input, td input {
+    border: none;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    padding: 10px 12px;
+    min-width: 60px;
+    text-align: center;
+  }
+  th input { font-weight: 600; text-align: center; }
+  td:first-child input, th:first-child {
+    text-align: left;
+  }
+  td:first-child input {
+    font-weight: 600;
+    min-width: 90px;
+  }
+  th:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--gold-soft);
+    color: #FFFFFF;
+    z-index: 2;
+    min-width: 90px;
+  }
+  td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--paper);
+    z-index: 1;
+  }
+  input:focus {
+    outline: 2px solid var(--gold);
+    outline-offset: -2px;
+  }
+  thead th input:focus, th:first-child input:focus {
+    outline-color: #FFFFFF;
+  }
+  #add-week-cell {
+    vertical-align: middle;
+    text-align: center;
+  }
+  #add-week-btn {
+    border: 1px dashed #FFFFFF;
+    color: #FFFFFF;
+    background: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 8px 14px;
+    margin: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #status {
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+
+  <h1>Weekly Pool</h1>
+  <p class="sub">Click any box to edit it. Changes save automatically and everyone sees them live.</p>
+
+  <div id="setup-notice" style="display:none;">
+    <h2>One-time setup needed</h2>
+    <p>This page needs a free Firebase database plugged in before it can save anything. Open this file in a text
+    editor and find the <code>firebaseConfig</code> object near the bottom of the page, then replace it with your
+    own project's config. Steps:</p>
+    <ol>
+      <li>Go to <code>console.firebase.google.com</code> and create a free project (any Google account works).</li>
+      <li>In the project, click the <code>&lt;/&gt;</code> (web app) icon to register a web app, and copy the
+        <code>firebaseConfig</code> object it gives you.</li>
+      <li>In this file, go to <code>Build &gt; Realtime Database &gt; Create Database</code>, then open the
+        <code>Rules</code> tab and set it to:
+        <br><code>{ "rules": { ".read": true, ".write": true } }</code>
+        <br>(This keeps things simple for a friend group — anyone with the link can read and write. Don't put
+        anything sensitive in this board.)</li>
+      <li>Paste your copied config into the <code>firebaseConfig</code> object in this file, replacing the
+        placeholder values, and save.</li>
+      <li>Re-host or re-upload the file wherever you're serving it from.</li>
+    </ol>
+  </div>
+
+  <div id="table-wrap" style="display:none;">
+    <table>
+      <thead>
+        <tr id="header-row"></tr>
+      </thead>
+      <tbody id="body-rows"></tbody>
+    </table>
+  </div>
+  <div id="status"></div>
+
+  <script type="module">
+    import {
+      initializeApp
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getDatabase, ref, onValue, set, update
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    // ---- 1) Replace this with your own project's config from the Firebase console ----
+    const firebaseConfig = {
+      apiKey: "AIzaSyCTeK3061259BV6QUyf2SXrC5ycin6NW2Y",
+      authDomain: "basement-ed40e.firebaseapp.com",
+      databaseURL: "https://basement-ed40e-default-rtdb.firebaseio.com",
+      projectId: "basement-ed40e",
+      storageBucket: "basement-ed40e.firebasestorage.app",
+      messagingSenderId: "900279297933",
+      appId: "1:900279297933:web:1efc939e2c56f7be35bfc4"
+    };
+
+    const ROW_COUNT = 9;
+
+    function defaultData(){
+      return {
+        names: Array.from({length: ROW_COUNT}, (_, i) => "Name " + (i + 1)),
+        weekIds: ["w1"],
+        weekLabels: { w1: "Week 1" },
+        cells: { w1: Array.from({length: ROW_COUNT}, () => "") }
+      };
+    }
+
+    if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "REPLACE_ME") {
+      document.getElementById('setup-notice').style.display = 'block';
+    } else {
+      startApp();
+    }
+
+    function startApp(){
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+      const poolRef = ref(db, 'pool');
+
+      let localState = null;
+      let seeded = false;
+
+      document.getElementById('table-wrap').style.display = 'block';
+
+      onValue(poolRef, function(snapshot){
+        const remote = snapshot.val();
+        if (!remote) {
+          if (!seeded) {
+            seeded = true;
+            set(poolRef, defaultData()).catch(function(e){
+              setStatus('Could not initialize the board — check your database rules.');
+              console.error(e);
+            });
+          }
+          return;
+        }
+        const structureChanged = !localState ||
+          JSON.stringify(localState.weekIds) !== JSON.stringify(remote.weekIds);
+        localState = remote;
+        if (structureChanged) {
+          renderFull(remote, db);
+        } else {
+          patchValues(remote);
+        }
+      }, function(err){
+        setStatus('Could not connect to the database — check your Firebase config and rules.');
+        console.error(err);
+      });
+    }
+
+    function setStatus(msg){
+      document.getElementById('status').textContent = msg;
+    }
+
+    function isFocused(el){
+      return document.activeElement === el;
+    }
+
+    function autosizeInput(el){
+      const text = el.value || el.placeholder || '';
+      const chars = Math.max(6, Math.min(28, text.length + 2));
+      el.style.width = chars + 'ch';
+    }
+
+    function renderFull(data, db){
+      const headerRow = document.getElementById('header-row');
+      const bodyRows = document.getElementById('body-rows');
+      headerRow.innerHTML = '';
+      bodyRows.innerHTML = '';
+
+      const corner = document.createElement('th');
+      headerRow.appendChild(corner);
+
+      data.weekIds.forEach(function(weekId){
+        const th = document.createElement('th');
+        const input = document.createElement('input');
+        input.id = 'weeklabel-' + weekId;
+        input.value = data.weekLabels[weekId] || weekId;
+        autosizeInput(input);
+        input.addEventListener('input', function(){ autosizeInput(input); });
+        input.addEventListener('blur', function(){
+          update(ref(db, 'pool'), { ['weekLabels/' + weekId]: input.value }).catch(function(e){
+            setStatus('Save failed — check your connection.');
+            console.error(e);
+          });
+        });
+        th.appendChild(input);
+        headerRow.appendChild(th);
+      });
+
+      const addTh = document.createElement('th');
+      addTh.id = 'add-week-cell';
+      const addBtn = document.createElement('button');
+      addBtn.id = 'add-week-btn';
+      addBtn.textContent = '+ Add week';
+      addBtn.addEventListener('click', function(){ addWeek(db, data); });
+      addTh.appendChild(addBtn);
+      headerRow.appendChild(addTh);
+
+      for (let r = 0; r < ROW_COUNT; r++) {
+        const tr = document.createElement('tr');
+        const nameTd = document.createElement('td');
+        const nameInput = document.createElement('input');
+        nameInput.id = 'name-' + r;
+        nameInput.value = (data.names && data.names[r]) || '';
+        autosizeInput(nameInput);
+        nameInput.addEventListener('input', function(){ autosizeInput(nameInput); });
+        nameInput.addEventListener('blur', function(){
+          set(ref(db, 'pool/names/' + r), nameInput.value).catch(function(e){
+            setStatus('Save failed — check your connection.');
+            console.error(e);
+          });
+        });
+        nameTd.appendChild(nameInput);
+        tr.appendChild(nameTd);
+
+        data.weekIds.forEach(function(weekId){
+          const td = document.createElement('td');
+          const cellInput = document.createElement('input');
+          cellInput.id = 'cell-' + weekId + '-' + r;
+          const colValues = data.cells && data.cells[weekId] ? data.cells[weekId] : [];
+          cellInput.value = colValues[r] || '';
+          autosizeInput(cellInput);
+          cellInput.addEventListener('input', function(){ autosizeInput(cellInput); });
+          cellInput.addEventListener('blur', function(){
+            set(ref(db, 'pool/cells/' + weekId + '/' + r), cellInput.value).catch(function(e){
+              setStatus('Save failed — check your connection.');
+              console.error(e);
+            });
+          });
+          td.appendChild(cellInput);
+          tr.appendChild(td);
+        });
+
+        const spacerTd = document.createElement('td');
+        tr.appendChild(spacerTd);
+
+        bodyRows.appendChild(tr);
+      }
+    }
+
+    function patchValues(data){
+      for (let r = 0; r < ROW_COUNT; r++) {
+        const nameInput = document.getElementById('name-' + r);
+        if (nameInput && !isFocused(nameInput)) {
+          const val = (data.names && data.names[r]) || '';
+          if (nameInput.value !== val) { nameInput.value = val; autosizeInput(nameInput); }
+        }
+      }
+      (data.weekIds || []).forEach(function(weekId){
+        const labelInput = document.getElementById('weeklabel-' + weekId);
+        if (labelInput && !isFocused(labelInput)) {
+          const val = (data.weekLabels && data.weekLabels[weekId]) || weekId;
+          if (labelInput.value !== val) { labelInput.value = val; autosizeInput(labelInput); }
+        }
+        const colValues = data.cells && data.cells[weekId] ? data.cells[weekId] : [];
+        for (let r = 0; r < ROW_COUNT; r++) {
+          const cellInput = document.getElementById('cell-' + weekId + '-' + r);
+          if (cellInput && !isFocused(cellInput)) {
+            const val = colValues[r] || '';
+            if (cellInput.value !== val) { cellInput.value = val; autosizeInput(cellInput); }
+          }
+        }
+      });
+    }
+
+    function addWeek(db, data){
+      const nextNum = (data.weekIds || []).length + 1;
+      const newId = 'w' + Date.now();
+      const newWeekIds = (data.weekIds || []).concat([newId]);
+      const patch = {
+        weekIds: newWeekIds,
+        ['weekLabels/' + newId]: 'Week ' + nextNum,
+        ['cells/' + newId]: Array.from({length: ROW_COUNT}, () => '')
+      };
+      update(ref(db, 'pool'), patch).catch(function(e){
+        setStatus('Could not add the week — check your connection.');
+        console.error(e);
+      });
+    }
+  </script>
+</body>
+</html>
